@@ -28,9 +28,9 @@ use internals::{debug_from_display, write_err};
 use io::{BufRead, Write};
 
 use crate::consensus::encode::{self, Decodable, Encodable};
-use crate::consensus::Params;
-use crate::prelude::*;
-use crate::Network;
+use crate::network::{Network, TestnetVersion};
+use crate::params::Params;
+use crate::prelude::{Borrow, BorrowMut, String, ToOwned};
 
 #[rustfmt::skip]
 #[doc(inline)]
@@ -215,8 +215,13 @@ pub struct Magic([u8; 4]);
 impl Magic {
     /// Bitcoin mainnet network magic bytes.
     pub const BITCOIN: Self = Self([0xF9, 0xBE, 0xB4, 0xD9]);
-    /// Bitcoin testnet network magic bytes.
+    /// Bitcoin testnet3 network magic bytes.
+    #[deprecated(since = "0.33.0", note = "Use TESTNET3 instead")]
     pub const TESTNET: Self = Self([0x0B, 0x11, 0x09, 0x07]);
+    /// Bitcoin testnet3 network magic bytes.
+    pub const TESTNET3: Self = Self([0x0B, 0x11, 0x09, 0x07]);
+    /// Bitcoin testnet4 network magic bytes.
+    pub const TESTNET4: Self = Self([0x1c, 0x16, 0x3f, 0x28]);
     /// Bitcoin signet network magic bytes.
     pub const SIGNET: Self = Self([0x0A, 0x03, 0xCF, 0x40]);
     /// Bitcoin regtest network magic bytes.
@@ -245,31 +250,41 @@ impl FromStr for Magic {
     }
 }
 
-impl From<Network> for Magic {
-    fn from(network: Network) -> Magic {
-        match network {
-            // Note: new network entries must explicitly be matched in `try_from` below.
-            Network::Bitcoin => Magic::BITCOIN,
-            Network::Testnet => Magic::TESTNET,
-            Network::Signet => Magic::SIGNET,
-            Network::Regtest => Magic::REGTEST,
+macro_rules! generate_network_magic_conversion {
+    ($(Network::$network:ident$((TestnetVersion::$testnet_version:ident))? => Magic::$magic:ident,)*) => {
+        impl From<Network> for Magic {
+            fn from(network: Network) -> Magic {
+                match network {
+                    $(
+                        Network::$network$((TestnetVersion::$testnet_version))? => Magic::$magic,
+                    )*
+                }
+            }
         }
-    }
+
+        impl TryFrom<Magic> for Network {
+            type Error = UnknownMagicError;
+
+            fn try_from(magic: Magic) -> Result<Self, Self::Error> {
+                match magic {
+                    $(
+                        Magic::$magic => Ok(Network::$network$((TestnetVersion::$testnet_version))?),
+                    )*
+                    _ => Err(UnknownMagicError(magic)),
+                }
+            }
+        }
+    };
 }
 
-impl TryFrom<Magic> for Network {
-    type Error = UnknownMagicError;
-
-    fn try_from(magic: Magic) -> Result<Self, Self::Error> {
-        match magic {
-            // Note: any new network entries must be matched against here.
-            Magic::BITCOIN => Ok(Network::Bitcoin),
-            Magic::TESTNET => Ok(Network::Testnet),
-            Magic::SIGNET => Ok(Network::Signet),
-            Magic::REGTEST => Ok(Network::Regtest),
-            _ => Err(UnknownMagicError(magic)),
-        }
-    }
+// Generate conversion functions for all known networks.
+// `Network -> Magic` and `Magic -> Network`
+generate_network_magic_conversion! {
+    Network::Bitcoin => Magic::BITCOIN,
+    Network::Testnet(TestnetVersion::V3) => Magic::TESTNET3,
+    Network::Testnet(TestnetVersion::V4) => Magic::TESTNET4,
+    Network::Signet => Magic::SIGNET,
+    Network::Regtest => Magic::REGTEST,
 }
 
 impl fmt::Display for Magic {
@@ -423,7 +438,8 @@ mod tests {
     fn magic_from_str() {
         let known_network_magic_strs = [
             ("f9beb4d9", Network::Bitcoin),
-            ("0b110907", Network::Testnet),
+            ("0b110907", Network::Testnet(TestnetVersion::V3)),
+            ("1c163f28", Network::Testnet(TestnetVersion::V4)),
             ("fabfb5da", Network::Regtest),
             ("0a03cf40", Network::Signet),
         ];

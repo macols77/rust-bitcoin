@@ -94,8 +94,8 @@ fn psbt_sign_taproot() {
         // Step 2: sign psbt.
         //
         let keystore = Keystore {
-            mfp: Fingerprint::from_str(mfp).unwrap(),
-            sk: PrivateKey::new(kp.secret_key(), Network::Testnet),
+            mfp: mfp.parse::<Fingerprint>().unwrap(),
+            sk: PrivateKey::new(kp.secret_key(), Network::Testnet(bitcoin::TestnetVersion::V3)),
         };
         let _ = psbt_key_path_spend.sign(&keystore, secp);
 
@@ -124,8 +124,8 @@ fn psbt_sign_taproot() {
         let signing_key_path = sk_path[1].1;
 
         let keystore = Keystore {
-            mfp: Fingerprint::from_str(mfp).unwrap(),
-            sk: PrivateKey::new(kp.secret_key(), Network::Testnet),
+            mfp: mfp.parse::<Fingerprint>().unwrap(),
+            sk: PrivateKey::new(kp.secret_key(), Network::Testnet(bitcoin::TestnetVersion::V3)),
         };
 
         //
@@ -196,7 +196,7 @@ fn create_taproot_tree(
 
 fn create_p2tr_address(tree: TaprootSpendInfo) -> Address {
     let output_key = tree.output_key();
-    Address::p2tr_tweaked(output_key, Network::Testnet)
+    Address::p2tr_tweaked(output_key, Network::Testnet(bitcoin::TestnetVersion::V3))
 }
 
 fn create_psbt_for_taproot_key_path_spend(
